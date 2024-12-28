@@ -6,13 +6,12 @@
 #include <fstream>
 #include <string>
 
-#include <windows.h>
-
 using namespace Rendering;
 
 // TODO: Move this to a dedicated header/CU, and refactor to take error info like shader file name, etc.
 void crash_with_error(std::string_view message) {
-    MessageBox(nullptr, message.data(), "VRL Engine", MB_ICONERROR | MB_OK);
+    //MessageBox(nullptr, message.data(), "VRL Engine", MB_ICONERROR | MB_OK); 
+    std::cout << "VRL Engine: " << message << '\n';
     std::exit(1);
 }
 
