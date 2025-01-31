@@ -7,13 +7,13 @@
 #include <string>
 
 struct World {
-    /**
+    /** 
      * @brief World size in chunks.
      */
     struct WorldSize {
-        int x = 128;
+        int x = 64;
         int y = 1;
-        int z = 128;
+        int z = 64;
     } world_size; // TODO: Crash during worldgen (not meshing) when x = 256
  
     auto get_chunk_at(ChunkPosition pos) -> Chunk*;

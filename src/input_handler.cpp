@@ -128,7 +128,6 @@ void WindowInputHandler::key_callback_impl(GLFWwindow* window, int key, int scan
 #define clamp_high(x, m) ((x > m) ? m : x) 
 #define clamp_low(x, m) ((x < m) ? m : x)
 void WindowInputHandler::scroll_callback_impl(GLFWwindow* window, int xoffset, int yoffset) {
-    std::cout << yoffset << '\n';
     if (yoffset > 0)
         scroll_speedmult = clamp_high(scroll_speedmult + yoffset, scroll_speedmult_max);
     else if (yoffset < 0)
@@ -151,7 +150,7 @@ void WindowInputHandler::input_handler_impl(GLFWwindow* window) {
 }
 
 void WindowInputHandler::update_projection_cache() {
-    projection_cache = glm::perspective(fov, aspect, near, 100000.0f);
+    projection_cache = glm::perspective(fov, aspect, near, far);
 }
 
 void WindowInputHandler::update_view_cache() {

@@ -1,0 +1,45 @@
+#version 330 core 
+
+out vec4 FragColor;
+in vec2 TexCoord;
+in vec3 Normal;
+
+uniform vec3 u_lightpos;
+uniform vec3 u_camerapos;
+
+uniform sampler2D map;
+
+void main() {
+    //FragColor = texture(map, TexCoord) - 0.1 - (0.1 * Normal.x) - (0.1 * Normal.z) - (-0.05 * Normal.y);
+    vec3 normal = normalize(Normal);
+    //FragColor = texture(map, TexCoord) - 0.05 - (0.065 * (1 - normal.y)) + (0.05 * (1 - normal.z));
+    FragColor = texture(map, TexCoord) * vec4(0.699809, 0.540284, 0.46729, 1.0) - 0.05 - (0.075 * (1 - normal.y)) + (0.05 * (1 - abs(normal.z))) - (0.05 * -normal.y);
+
+    // ambient
+    vec3 ambient = vec3(0.5, 0.5, 0.5); // gray
+
+    // diffuse
+    
+    vec3 lightColor = vec3(1.0, 0.7, 0.4);
+    vec3 lightSource = vec3(-5.0, 2.5, -3.0);
+    float diffuseStrength = max(0.0, dot(lightSource, normal));
+    vec3 diffuse = diffuseStrength * lightColor;
+
+    // specular
+    vec3 cameraSource = u_camerapos;
+    vec3 viewSource = normalize(cameraSource);
+    vec3 reflectSource = normalize(reflect(-lightSource, normal));
+    float specularStrength = max(0.0, dot(viewSource, reflectSource));
+    specularStrength = pow(specularStrength, 32.0);
+    vec3 specular = specularStrength * lightColor;
+
+    vec3 lighting = vec3(0.0, 0.0, 0.0); // color - black
+    lighting = ambient + diffuse + specular;
+
+    vec3 color = vec3(0.45, 0.45, 0.45); // color -- white-ish
+    vec3 final = color * lighting;
+
+    //FragColor = vec4(final, 1.0);
+
+    // FragColor = vec4(1.0, 1.0, 1.0, 1.0) - 0.1 - (0.1 * Normal.x) - (0.1 * Normal.z) - (-0.05 * Normal.y);
+}

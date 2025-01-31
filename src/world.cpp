@@ -10,6 +10,7 @@ Chunk* World::get_chunk_at(ChunkPosition pos) {
     return chunk_it->second;
 }
 
+// slow fucking algorithm btw
 Voxel World::get_voxel_at(Position world_pos) const {
     auto chunk_pos = ChunkPosition::from_world_pos(world_pos);
     

@@ -20,47 +20,71 @@
 
 #include <siv/PerlinNoise.hpp>
 
-void populate_chunk(Chunk& chunk) {
-    // 123456 is my favorite seed
+#define clamp(x, m) (x > m ? m : x)
 
-    // // for (int x = 0; x < Chunk::Width; ++x) {
-    // //     for (int y = 0; y < Chunk::Height; ++y) {
-    // //         if (x == 0 || x == Chunk::Width - 1) {
-    // //             for (int z = 0; z < Chunk::Width; ++z) {
-    // //                 chunk.voxels[x][y][z].type = VoxelType::NONE;
-    // //             }
-    // //         }
+#define MCONCAT_IMPL(x, y) x##y
+#define MCONCAT(x, y) MCONCAT_IMPL(x, y)
+#define static_run(expr) static void* MCONCAT(nop, __LINE__) = ([&](){ {expr;} return nullptr; })(); (void)MCONCAT(nop, __LINE__);
 
-    // //         chunk.voxels[x][y][0].type = VoxelType::NONE;
-    // //         chunk.voxels[x][y][Chunk::Width-1].type = VoxelType::NONE;
-    // //     }
-    // // }
+// VoxelType get_voxel(int x, int y, int z) {
+//     //constexpr float scale = 0.005f;
+//     constexpr size_t seed = 123456u;
+//     static_run(srand(seed));
 
-    static constexpr unsigned int seed = 1u;
+//     auto surface_y = 100 + rand() % 20;
+//     return (y < surface_y) ? VoxelType::STONE : VoxelType::NONE;
+// }
+
+int get_voxel_height(const Chunk& chunk, int x, int z) {
+    static constexpr unsigned int seed = 123456u;
+    static constexpr float inv_scale = 0.0007;
+    static constexpr int min_height = 100;
+    
     static siv::PerlinNoise perlin{ seed };
+
+    const double noise = perlin.octave2D(
+        (x + chunk.position.x * Chunk::Width) * inv_scale,
+        (z + chunk.position.z * Chunk::Width) * inv_scale, 8, 0.5);
+
+    return clamp(min_height + abs(static_cast<int>(noise * Chunk::Height)), Chunk::Height);
+}
+
+void populate_chunk(Chunk& chunk) {
+    // 123456 is my favorite seed'
 
     for (int x = 0; x < Chunk::Width; ++x) {
         for (int z = 0; z < Chunk::Width; ++z) {
-            const double noise = perlin.octave2D(
-                ((x + chunk.position.x * Chunk::Width) * 0.004), 
-                ((z + chunk.position.z * Chunk::Width) * 0.004), 5);
-
-            int height = static_cast<int>(noise * Chunk::Height);
-            for (int y = 0; y < height-1; ++y) {
+            auto height = get_voxel_height(chunk, x, z);
+            
+            for (int y = 0; y < height; ++y) {
                 chunk.voxels[x][y][z].type = VoxelType::STONE;
             }
 
-            if (height > 0 && height < 54) chunk.voxels[x][height-1][z].type = VoxelType::GRASS;
-            if (height > 1 && height < 64) chunk.voxels[x][height-2][z].type = VoxelType::DIRT;
-            if (height > 2 && height < 64) chunk.voxels[x][height-3][z].type = VoxelType::DIRT;
+            if (height > 0 && height < 260) chunk.voxels[x][height-1][z].type = VoxelType::GRASS;
+            if (height > 1 && height < 272) chunk.voxels[x][height-2][z].type = VoxelType::DIRT;
+            if (height > 2 && height < 272) chunk.voxels[x][height-3][z].type = VoxelType::DIRT;
 
-            if (height == 0 || height == 1 || height == 2) 
+            if (height == 0 || height == 1 || height == 2) { 
                 chunk.voxels[x][height][z].type = VoxelType::SAND;
+                for (int i = 0; i < height; ++i) {
+                    chunk.voxels[x][i][z].type = VoxelType::SAND;
+                }
+            }
         }
     }
+
+
+
+    // for (int x = 0; x < Chunk::Width; ++x) {
+    //     for (int y = 0; y < Chunk::Height; ++y) {
+    //         for (int z = 0; z < Chunk::Width; ++z) {
+    //             chunk.voxels[x][y][z].type = get_voxel(x, y, z);
+    //         }
+    //     }
+    // }
 }
 
-int main() { 
+int main() {
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW.\n";
         return 1;
@@ -69,6 +93,7 @@ int main() {
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    //glfwWindowHint(GLFW_SAMPLES, 32);
 
     GLFWwindow* window = glfwCreateWindow(600, 600, "threedeestuff", nullptr, nullptr);
     if (!window) {
@@ -78,6 +103,15 @@ int main() {
     }
     glfwMakeContextCurrent(window);
 
+    GLFWimage images[1];
+    images[0].pixels = stbi_load("resources/fe_icon.png", &images[0].width, &images[0].height, 0, 4);
+    if (!images[0].pixels) {
+        std::cout << "failed to load icon.\n";
+        return 1;
+    }
+    glfwSetWindowIcon(window, 1, images);
+    stbi_image_free(images[0].pixels);
+
     if (!gladLoadGL(reinterpret_cast<GLADloadfunc>(glfwGetProcAddress))) {
         std::cerr << "Failed to initialize GLAD bindings for OpenGL.\n";
         glfwTerminate();
@@ -86,7 +120,8 @@ int main() {
 
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
-    
+    //glEnable(GL_MULTISAMPLE);
+
     glCullFace(GL_FRONT);
     glViewport(0, 0, 600, 600);
 
@@ -99,6 +134,13 @@ int main() {
     // chunk->fill(VoxelType::STONE);
     // auto mesh = ChunkMesher(chunk, nullptr).generate_mesh();
     // mesh.upload_buffers();
+
+    struct CoordChunkMesh {
+        ChunkMesh mesh;
+        ChunkPosition position;
+        size_t indices;
+    };
+    std::vector<CoordChunkMesh> meshes;
 
     World world;
     for (int x = 0; x < world.world_size.x; ++x) {
@@ -119,19 +161,15 @@ int main() {
     auto end = std::chrono::system_clock::now();
     std::cout << "Elapsed: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms\n";
 
-    struct CoordChunkMesh {
-        ChunkMesh mesh;
-        ChunkPosition position;
-    };
-
     std::cout << "Generating meshes...\n";
     start = std::chrono::system_clock::now();
     UVOffsetScheme uv_scheme = UVOffsetScheme::with_width(64, 16);
 
     world.get_chunk_at({ 0, 0, 0 })->voxels[0][0][0].type = VoxelType::CRATE;
 
+    // stupid fucking dumb mesh counter for pretty printing
     int counter = 0;
-    std::vector<CoordChunkMesh> meshes;
+    
     for (int x = 0; x < world.world_size.x; ++x) {
         for (int y = 0; y < world.world_size.y; ++y) {
             for (int z = 0; z < world.world_size.z; ++z) {
@@ -141,11 +179,12 @@ int main() {
                     continue;
                 }
                 
-                // std::cout << "{ " 
-                //     << chunk->position.x << ", " << chunk->position.y << ", " << chunk->position.z << " }\n";
                 auto mesh = ChunkMesher(chunk, &world, &uv_scheme).generate_mesh();
                 mesh.upload_buffers();
-                meshes.push_back({ mesh, chunk->position });
+                auto size = mesh.indices.size();
+                mesh.indices.clear();
+                mesh.vertices.clear();
+                meshes.push_back({ mesh, chunk->position, size });
 
                 ++counter;
                 if (counter % (world.world_size.y * world.world_size.z) == 0) {
@@ -154,6 +193,13 @@ int main() {
             }
         }
     }
+
+    std::cout << "World remaining in memory.\n";
+    // std::cout << "Freeing all chunks...\n";
+    // for (auto& chunk_node : world.loaded_chunks) {
+    //     delete chunk_node.second;
+    // }
+    // world.loaded_chunks.clear();
 
     end = std::chrono::system_clock::now();
     std::cout << "Elapsed: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms\n";
@@ -195,69 +241,130 @@ int main() {
 
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    // temporary controls for isometric camera.
-    // TODO: Make isometric camera?
-    float pos = 16.0f;
-    float speed = 0.1f;
-    float pos_y = 0.0f;
-    glm::mat4 view = glm::lookAt(glm::vec3{ pos, pos + pos_y, -pos }, { 0.f, pos_y, 0.f }, { 0.f, 1.f, 0.f });
-
     std::cout << "Starting...\n";
 
     Rendering::ChunkShader shader = Rendering::ChunkShader::get_chunk_shader();
 
+    GLuint u_lightpos = glGetUniformLocation(shader.program_id(), "u_lightpos");
+    GLuint u_camerapos = glGetUniformLocation(shader.program_id(), "u_camerapos");
+
+    // TEMP
+
+    input_handler.camera_pos = { 50, 50, 50 };
+
+    // two meshes
+    // top mesh - water
+    // bottom mesh - sand
+
+    // both meshes need their own texture
+
+    // water mesh is a single quad and must be translucent
+    // sand mesh is a pseudo-voxel layer, and thus needs six faces
+
+    GLuint water_vao;
+    GLuint water_vbo;
+
+    GLuint floor_vao;
+    GLuint floor_vbo;
+
+    glGenVertexArrays(1, &water_vao);
+    glGenBuffers(1, &water_vbo);
+
+    glGenVertexArrays(1, &floor_vao);
+    glGenBuffers(1, &floor_vbo);
+
+    float scale_x = world.world_size.x * Chunk::Width;
+    float scale_z = world.world_size.z * Chunk::Width;
+
+    float water_verts[6*3*2*3] = {
+        0, -0.25f+106, 0, 0.0f, 0.0f,       0.0f, 1.0f, 0.0f,
+        0, -0.25f+106, scale_z, 0.0f,       scale_z, 0.0f, 1.0f, 0.0f,
+        scale_x, -0.25f+106, scale_z,       scale_x, scale_z, 0.0f, 1.0f, 0.0f,
+
+        scale_x, -0.25f+106, scale_z,       scale_x, scale_z, 0.0f, 1.0f, 0.0f,
+        scale_x, -0.25f+106, 0,             scale_x, 0.0f, 0.0f, 1.0f, 0.0f,
+        0, -0.25f+106, 0, 0.0f,             0.0f, 0.0f, 1.0f, 0.0f,
+    };
+
+    glBindVertexArray(water_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, water_vbo);
+
+    glBufferData(GL_ARRAY_BUFFER, sizeof water_verts, water_verts, GL_STATIC_DRAW);
     
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof (float), (void*)0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof (float), (void*)(3 * sizeof (float)));
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof (float), (void*)(5 * sizeof (float)));
+
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glEnableVertexAttribArray(2);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    // water texture
+
+    data = stbi_load("resources/water.png", &width, &height, &channels, 0);
+    if (!data) {
+        std::cerr << "Failed to load water texture.\n";
+        glfwTerminate();
+        return 1;
+    }
+
+    GLuint water_texture;
+    glGenTextures(1, &water_texture);
+
+    glBindTexture(GL_TEXTURE_2D, water_texture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    stbi_image_free(data);
+    
+    // END OF TEMP 
 
     while (!glfwWindowShouldClose(window)) {
         start = std::chrono::system_clock::now();
-        glClearColor(0.70, 0.85, 0.95, 1.0);
+        glClearColor(0.09, 0.098, 0.114, 1.0);
+        //glClearColor(0.62, 0.81, 0.93, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         input_handler.handle_framewise_key_input();
 
-        int width, height;
-        glfwGetFramebufferSize(window, &width, &height);
-
-        // temporary controls for isometric camera
-        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-            pos -= speed * abs(pos / 5) + speed;
-        }
-        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-            pos += speed * abs(pos / 5) + speed;
-        }
-        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-            pos_y += speed * abs(pos / 5) + speed;
-        }
-        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
-            pos_y -= speed * abs(pos / 5) + speed;
-        }
-        if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS) {
-            pos = 16.0f;
-            pos_y = 0.0f;
-        }
-
         glBindTexture(GL_TEXTURE_2D, texture);
 
-        view = glm::lookAt(glm::vec3{pos, pos + pos_y, -pos}, {0.f, pos_y, 0.f}, {0.f, 1.f, 0.f});
-        // TODO: Move overriden controls to isometric camera object
-        // renderer.draw(input_handler.get_projection_mat() * view);
+        static bool key_r_is_pressed = false;
+        if (glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS && !key_r_is_pressed) {
+            std::cout << "Rebuilding shader...\n";
 
-        // auto camera_view = input_handler.get_projection_mat() * input_handler.get_view_mat();
-        // for (auto&& renderer : chunk_renderers) {
-        //     renderer.draw(camera_view);
-        // }
+            key_r_is_pressed = true;
 
-        // auto camera_view = input_handler.get_projection_mat() * input_handler.get_view_mat();
-        // renderer.draw(camera_view);
+            glDeleteProgram(shader.m_program_id);
+            shader.m_program_id = 0;
+            
+            shader.m_program_id = Rendering::create_chunk_shader();
 
-        view = input_handler.get_projection_mat() * input_handler.get_view_mat();
+            shader.u_transform_loc = glGetUniformLocation(shader.program_id(), "u_transform");
+            shader.u_model_loc = glGetUniformLocation(shader.program_id(), "u_model");
+            u_lightpos = glGetUniformLocation(shader.m_program_id, "u_lightpos");
+            u_camerapos = glGetUniformLocation(shader.m_program_id, "u_camerapos");
+        } else if (glfwGetKey(window, GLFW_KEY_R) == GLFW_RELEASE && key_r_is_pressed) {
+            key_r_is_pressed = false;
+        }
+
+        glm::mat4 view = input_handler.get_projection_mat() * input_handler.get_view_mat();
         shader.use();
         shader.set_u_model(glm::identity<glm::mat4>());
         shader.set_u_transform(view);
-
-        // glBindVertexArray(mesh.vao);
-        // glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.ebo);
-        // glDrawElements(GL_TRIANGLES, mesh.indices.size(), GL_UNSIGNED_INT, nullptr);
+        
+        glm::vec3 light_pos = glm::vec3{ 100.0f, 200.0f, 100.0f };
+        glUniform3fv(u_lightpos, 1, glm::value_ptr(light_pos));
+        glUniform3fv(u_camerapos, 1, glm::value_ptr(input_handler.camera_pos));
 
         for (auto&& meshinfo : meshes) {
             glBindVertexArray(meshinfo.mesh.vao);
@@ -265,10 +372,18 @@ int main() {
 
             auto pos = meshinfo.position;
             shader.set_u_model(glm::translate(glm::identity<glm::mat4>(), 
-            { Chunk::Width * pos.x, Chunk::Height * pos.y, Chunk::Width * pos.z }));
+            { Chunk::Width * pos.x + 1, Chunk::Height * pos.y, Chunk::Width * pos.z + 1 }));
 
-            glDrawElements(GL_TRIANGLES, meshinfo.mesh.indices.size(), GL_UNSIGNED_INT, nullptr);
+            glDrawElements(GL_TRIANGLES, meshinfo.indices, GL_UNSIGNED_INT, nullptr);
         }
+
+        glCullFace(GL_BACK);
+        glBindVertexArray(water_vao);
+        glBindTexture(GL_TEXTURE_2D, water_texture);
+
+        shader.set_u_model(glm::identity<glm::mat4>());
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glCullFace(GL_FRONT);
 
         end = std::chrono::system_clock::now();
         double elapsed 

@@ -6,12 +6,13 @@
 #include <fstream>
 #include <string>
 
+#include <windows.h>
+
 using namespace Rendering;
 
 // TODO: Move this to a dedicated header/CU, and refactor to take error info like shader file name, etc.
 void crash_with_error(std::string_view message) {
-    //MessageBox(nullptr, message.data(), "VRL Engine", MB_ICONERROR | MB_OK); 
-    std::cout << "VRL Engine: " << message << '\n';
+    MessageBox(nullptr, message.data(), "VRL Engine", MB_ICONERROR | MB_OK);
     std::exit(1);
 }
 
@@ -77,7 +78,7 @@ void delete_shaders(Shaders... shaders) {
     ([&]{ glDeleteShader(shaders); }(), ...);
 }
 
-auto create_chunk_shader() -> GLuint {
+auto Rendering::create_chunk_shader() -> GLuint {
     std::string vertex_shader_src = get_file_contents("resources/shaders/chunk_vertex.glsl");
     std::string fragment_shader_src = get_file_contents("resources/shaders/chunk_fragment.glsl");
 
@@ -94,6 +95,7 @@ ChunkShader ChunkShader::get_chunk_shader() {
     static ChunkShader chunk_shader;
 
     if (chunk_shader.m_program_id == 0) {
+        std::cout << "Creating chunk shader...\n";
         chunk_shader.m_program_id = create_chunk_shader();
 
         chunk_shader.u_transform_loc = glGetUniformLocation(chunk_shader.program_id(), "u_transform");

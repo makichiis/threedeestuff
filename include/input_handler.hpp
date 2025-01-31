@@ -65,7 +65,7 @@ public:
     float fov = glm::radians(60.0f);
     float aspect = 1.0f;
     float near = 0.1f;
-    float far = 1000.0f;
+    float far = 8000.0f;
 
     // There is currently no way to override the behavior of the projection algorithm
     // except through editing the fov, aspect, near, far parameters. I don't think

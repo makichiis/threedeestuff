@@ -1,6 +1,12 @@
 #include <voxel.hpp>
 #include <chunk_mesh.hpp>
 
+// texture rotation stuff lol
+
+#include <siv/PerlinNoise.hpp>
+
+// end texture rotation stuff 
+
 ChunkMesher::ChunkMesher(const Chunk* chunk, World* world, UVOffsetScheme* s) 
     : chunk{chunk}, world{world}, uv_scheme{s} {
     static Chunk* empty_chunk = nullptr;
@@ -41,9 +47,11 @@ void ChunkMesh::upload_buffers() {
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof (Vertex), (void*)0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof (Vertex), (void*)(3 * sizeof (float)));
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof (Vertex), (void*)(5 * sizeof (float)));
 
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
+    glEnableVertexAttribArray(2);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -52,12 +60,8 @@ void ChunkMesh::upload_buffers() {
 
 ChunkMesh ChunkMesher::generate_mesh()  {
     auto mesh = ChunkMesh{};
-    
-    // 1. pre-allocate worst-case buffer size (memory is cheap)
-    mesh.vertices.reserve(Chunk::Width * Chunk::Width * Chunk::Height * 4 * 6 / 2);
-    mesh.indices.reserve(Chunk::Width * Chunk::Width * Chunk::Height * 6 * 6 / 2);
 
-    // 2. iterate all internal voxels
+    // 1. iterate all internal voxels (minimize bounds checking)
     for (int x = 1; x < Chunk::Width - 1; ++x) {
         for (int y = 1; y < Chunk::Height - 1; ++y) {
             for (int z = 1; z < Chunk::Width - 1; ++z) {
@@ -66,7 +70,7 @@ ChunkMesh ChunkMesher::generate_mesh()  {
         }
     }
 
-    // 3. iterate all edge voxels
+    // 2. iterate all edge voxels (bounds checking performed with neighboring chunks)
     for (int x = 0; x < Chunk::Width; ++x) {
         for (int y = 1; y < Chunk::Height-1; ++y) {
             if (x == 0 || x == Chunk::Width-1) {
@@ -93,7 +97,7 @@ ChunkMesh ChunkMesher::generate_mesh()  {
         }
     }
 
-    // 4. add indices (changing this can change draw direction, btw)
+    // 3. add indices (changing this can change draw direction, btw)
     for (unsigned int i = 0; i < static_cast<unsigned int>(mesh.vertices.size()); i += 4) {
         mesh.indices.insert(mesh.indices.end(), {
             0U+i, 1U+i, 3U+i, 1U+i, 2U+i, 3U+i
@@ -104,11 +108,6 @@ ChunkMesh ChunkMesher::generate_mesh()  {
 }
 
 void ChunkMesher::add_voxel(ChunkMesh& mesh, int x, int y, int z) {
-    if (!world) {
-        add_voxel_single_chunk(mesh, x, y, z);
-        return;
-    }
-
     VoxelType front = (z == Chunk::Width-1) 
         ? cache_chunk_z_front->voxels[x][y][0].type : chunk->voxels[x][y][z+1].type;
     VoxelType back = (z == 0)
@@ -132,52 +131,86 @@ void ChunkMesher::add_voxel(ChunkMesh& mesh, int x, int y, int z) {
     // very explicitly has a default nullptr value lol
     VoxelUV uv = uv_scheme->uvs.at(chunk->voxels[x][y][z].type);
 
+    // time to swizzle textures
+
+    // if (chunk->voxels[x][y][z].type == VoxelType::GRASS) {
+    //     UVQuad rot = uv.top;
+
+    //     double noise = perlin.noise2D(((double)x + chunk->position.x * Chunk::Width) * 0.4, ((double)z + chunk->position.z * Chunk::Width) * 0.4);
+    //     if (noise > 0.03) {
+    //         rot = {
+    //             uv.top.bottom_right,
+    //             uv.top.bottom_left,
+    //             uv.top.top_left,
+    //             uv.top.top_right
+    //         };
+    //     } else if (noise > 0.01) {
+    //         rot = {
+    //             uv.top.bottom_left,
+    //             uv.top.top_left,
+    //             uv.top.top_right,
+    //             uv.top.bottom_right 
+    //         };
+    //     } else if (noise > 0.006) {
+    //         rot = {
+    //             uv.top.top_left,
+    //             uv.top.top_right,
+    //             uv.top.bottom_right,
+    //             uv.top.bottom_left 
+    //         };
+    //     }
+
+    //     uv.top = rot;
+    // }
+
+    
+
     if (front == VoxelType::NONE) {
         mesh.vertices.insert(mesh.vertices.end(), {
-            { xf, yf, zf,       uv.front.top_right.u, uv.front.top_right.v },
-            { xf, yf-1, zf,     uv.front.bottom_right.u, uv.front.bottom_right.v },
-            { xf-1, yf-1, zf,   uv.front.bottom_left.u, uv.front.bottom_left.v },
-            { xf-1, yf, zf,     uv.front.top_left.u, uv.front.top_left.v }
+            { xf, yf, zf,       uv.front.top_right.u, uv.front.top_right.v, 0, 0, 1 },
+            { xf, yf-1, zf,     uv.front.bottom_right.u, uv.front.bottom_right.v, 0, 0, 1 },
+            { xf-1, yf-1, zf,   uv.front.bottom_left.u, uv.front.bottom_left.v, 0, 0, 1 },
+            { xf-1, yf, zf,     uv.front.top_left.u, uv.front.top_left.v, 0, 0, 1 }
         });
     }
     if (back == VoxelType::NONE) {
         mesh.vertices.insert(mesh.vertices.end(), {
-            { xf-1, yf, zf-1,   uv.back.top_right.u, uv.back.top_right.v },
-            { xf-1, yf-1, zf-1, uv.back.bottom_right.u, uv.back.bottom_right.v },
-            { xf, yf-1, zf-1,   uv.back.bottom_left.u, uv.back.bottom_left.v },
-            { xf, yf, zf-1,     uv.back.top_left.u, uv.back.top_left.v },
+            { xf-1, yf, zf-1,   uv.back.top_right.u, uv.back.top_right.v, 0, 0, -1 },
+            { xf-1, yf-1, zf-1, uv.back.bottom_right.u, uv.back.bottom_right.v, 0, 0, -1 },
+            { xf, yf-1, zf-1,   uv.back.bottom_left.u, uv.back.bottom_left.v, 0, 0, -1 },
+            { xf, yf, zf-1,     uv.back.top_left.u, uv.back.top_left.v, 0, 0, -1 },
         });
     }
     if (right == VoxelType::NONE) {
         mesh.vertices.insert(mesh.vertices.end(), {
-            { xf, yf, zf-1,     uv.right.top_right.u, uv.right.top_right.v },
-            { xf, yf-1, zf-1,   uv.right.bottom_right.u, uv.right.bottom_right.v },
-            { xf, yf-1, zf,     uv.right.bottom_left.u, uv.right.bottom_left.v },
-            { xf, yf, zf,       uv.right.top_left.u, uv.right.top_left.v },
+            { xf, yf, zf-1,     uv.right.top_right.u, uv.right.top_right.v, 1, 0, 0 },
+            { xf, yf-1, zf-1,   uv.right.bottom_right.u, uv.right.bottom_right.v, 1, 0, 0 },
+            { xf, yf-1, zf,     uv.right.bottom_left.u, uv.right.bottom_left.v, 1, 0, 0 },
+            { xf, yf, zf,       uv.right.top_left.u, uv.right.top_left.v, 1, 0, 0 },
         });
     }
     if (left == VoxelType::NONE) {
         mesh.vertices.insert(mesh.vertices.end(), {
-            { xf-1, yf, zf,     uv.left.top_right.u, uv.left.top_right.v },
-            { xf-1, yf-1, zf,   uv.left.bottom_right.u, uv.left.bottom_right.v },
-            { xf-1, yf-1, zf-1, uv.left.bottom_left.u, uv.left.bottom_left.v },
-            { xf-1, yf, zf-1,   uv.left.top_left.u, uv.left.top_left.v },
+            { xf-1, yf, zf,     uv.left.top_right.u, uv.left.top_right.v, -1, 0, 0 },
+            { xf-1, yf-1, zf,   uv.left.bottom_right.u, uv.left.bottom_right.v, -1, 0, 0 },
+            { xf-1, yf-1, zf-1, uv.left.bottom_left.u, uv.left.bottom_left.v, -1, 0, 0 },
+            { xf-1, yf, zf-1,   uv.left.top_left.u, uv.left.top_left.v, -1, 0, 0 },
         });
     }
     if (top == VoxelType::NONE) {
         mesh.vertices.insert(mesh.vertices.end(), {
-            { xf, yf, zf-1,     uv.top.top_right.u, uv.top.top_right.v },
-            { xf, yf, zf,       uv.top.bottom_right.u, uv.top.bottom_right.v },
-            { xf-1, yf, zf,     uv.top.bottom_left.u, uv.top.bottom_left.v },
-            { xf-1, yf, zf-1,   uv.top.top_left.u, uv.top.top_left.v },
+            { xf, yf, zf-1,     uv.top.top_right.u, uv.top.top_right.v, 0, 1, 0 },
+            { xf, yf, zf,       uv.top.bottom_right.u, uv.top.bottom_right.v, 0, 1, 0 },
+            { xf-1, yf, zf,     uv.top.bottom_left.u, uv.top.bottom_left.v, 0, 1, 0 },
+            { xf-1, yf, zf-1,   uv.top.top_left.u, uv.top.top_left.v, 0, 1, 0 },
         });
     }
     if (bottom == VoxelType::NONE) {
         mesh.vertices.insert(mesh.vertices.end(), {
-            { xf-1, yf-1, zf-1, uv.bottom.top_right.u, uv.bottom.top_right.v },
-            { xf-1, yf-1, zf,   uv.bottom.bottom_right.u, uv.bottom.bottom_right.v },
-            { xf, yf-1, zf,     uv.bottom.bottom_left.u, uv.bottom.bottom_left.v },
-            { xf, yf-1, zf-1,   uv.bottom.top_left.u, uv.bottom.top_left.v },
+            { xf-1, yf-1, zf-1, uv.bottom.top_right.u, uv.bottom.top_right.v, 0, -1, 0 },
+            { xf-1, yf-1, zf,   uv.bottom.bottom_right.u, uv.bottom.bottom_right.v, 0, -1, 0 },
+            { xf, yf-1, zf,     uv.bottom.bottom_left.u, uv.bottom.bottom_left.v, 0, -1, 0 },
+            { xf, yf-1, zf-1,   uv.bottom.top_left.u, uv.bottom.top_left.v, 0, -1, 0 },
         });
     }
 }
@@ -198,50 +231,50 @@ void ChunkMesher::add_non_edge_voxel(ChunkMesh& mesh, int x, int y, int z) {
 
     if (front == VoxelType::NONE) {
         mesh.vertices.insert(mesh.vertices.end(), {
-            { xf, yf, zf,       uv.front.top_right.u, uv.front.top_right.v },
-            { xf, yf-1, zf,     uv.front.bottom_right.u, uv.front.bottom_right.v },
-            { xf-1, yf-1, zf,   uv.front.bottom_left.u, uv.front.bottom_left.v },
-            { xf-1, yf, zf,     uv.front.top_left.u, uv.front.top_left.v }
+            { xf, yf, zf,       uv.front.top_right.u, uv.front.top_right.v, 0, 0, 1 },
+            { xf, yf-1, zf,     uv.front.bottom_right.u, uv.front.bottom_right.v, 0, 0, 1 },
+            { xf-1, yf-1, zf,   uv.front.bottom_left.u, uv.front.bottom_left.v, 0, 0, 1 },
+            { xf-1, yf, zf,     uv.front.top_left.u, uv.front.top_left.v, 0, 0, 1 }
         });
     }
     if (back == VoxelType::NONE) {
         mesh.vertices.insert(mesh.vertices.end(), {
-            { xf-1, yf, zf-1,   uv.back.top_right.u, uv.back.top_right.v },
-            { xf-1, yf-1, zf-1, uv.back.bottom_right.u, uv.back.bottom_right.v },
-            { xf, yf-1, zf-1,   uv.back.bottom_left.u, uv.back.bottom_left.v },
-            { xf, yf, zf-1,     uv.back.top_left.u, uv.back.top_left.v },
+            { xf-1, yf, zf-1,   uv.back.top_right.u, uv.back.top_right.v, 0, 0, -1 },
+            { xf-1, yf-1, zf-1, uv.back.bottom_right.u, uv.back.bottom_right.v, 0, 0, -1 },
+            { xf, yf-1, zf-1,   uv.back.bottom_left.u, uv.back.bottom_left.v, 0, 0, -1 },
+            { xf, yf, zf-1,     uv.back.top_left.u, uv.back.top_left.v, 0, 0, -1 },
         });
     }
     if (right == VoxelType::NONE) {
         mesh.vertices.insert(mesh.vertices.end(), {
-            { xf, yf, zf-1,     uv.right.top_right.u, uv.right.top_right.v },
-            { xf, yf-1, zf-1,   uv.right.bottom_right.u, uv.right.bottom_right.v },
-            { xf, yf-1, zf,     uv.right.bottom_left.u, uv.right.bottom_left.v },
-            { xf, yf, zf,       uv.right.top_left.u, uv.right.top_left.v },
+            { xf, yf, zf-1,     uv.right.top_right.u, uv.right.top_right.v, 1, 0, 0 },
+            { xf, yf-1, zf-1,   uv.right.bottom_right.u, uv.right.bottom_right.v, 1, 0, 0 },
+            { xf, yf-1, zf,     uv.right.bottom_left.u, uv.right.bottom_left.v, 1, 0, 0 },
+            { xf, yf, zf,       uv.right.top_left.u, uv.right.top_left.v, 1, 0, 0 },
         });
     }
     if (left == VoxelType::NONE) {
         mesh.vertices.insert(mesh.vertices.end(), {
-            { xf-1, yf, zf,     uv.left.top_right.u, uv.left.top_right.v },
-            { xf-1, yf-1, zf,   uv.left.bottom_right.u, uv.left.bottom_right.v },
-            { xf-1, yf-1, zf-1, uv.left.bottom_left.u, uv.left.bottom_left.v },
-            { xf-1, yf, zf-1,   uv.left.top_left.u, uv.left.top_left.v },
+            { xf-1, yf, zf,     uv.left.top_right.u, uv.left.top_right.v, -1, 0, 0 },
+            { xf-1, yf-1, zf,   uv.left.bottom_right.u, uv.left.bottom_right.v, -1, 0, 0 },
+            { xf-1, yf-1, zf-1, uv.left.bottom_left.u, uv.left.bottom_left.v, -1, 0, 0 },
+            { xf-1, yf, zf-1,   uv.left.top_left.u, uv.left.top_left.v, -1, 0, 0 },
         });
     }
     if (top == VoxelType::NONE) {
         mesh.vertices.insert(mesh.vertices.end(), {
-            { xf, yf, zf-1,     uv.top.top_right.u, uv.top.top_right.v },
-            { xf, yf, zf,       uv.top.bottom_right.u, uv.top.bottom_right.v },
-            { xf-1, yf, zf,     uv.top.bottom_left.u, uv.top.bottom_left.v },
-            { xf-1, yf, zf-1,   uv.top.top_left.u, uv.top.top_left.v },
+            { xf, yf, zf-1,     uv.top.top_right.u, uv.top.top_right.v, 0, 1, 0 },
+            { xf, yf, zf,       uv.top.bottom_right.u, uv.top.bottom_right.v, 0, 1, 0 },
+            { xf-1, yf, zf,     uv.top.bottom_left.u, uv.top.bottom_left.v, 0, 1, 0 },
+            { xf-1, yf, zf-1,   uv.top.top_left.u, uv.top.top_left.v, 0, 1, 0 },
         });
     }
     if (bottom == VoxelType::NONE) {
         mesh.vertices.insert(mesh.vertices.end(), {
-            { xf-1, yf-1, zf-1, uv.bottom.top_right.u, uv.bottom.top_right.v },
-            { xf-1, yf-1, zf,   uv.bottom.bottom_right.u, uv.bottom.bottom_right.v },
-            { xf, yf-1, zf,     uv.bottom.bottom_left.u, uv.bottom.bottom_left.v },
-            { xf, yf-1, zf-1,   uv.bottom.top_left.u, uv.bottom.top_left.v },
+            { xf-1, yf-1, zf-1, uv.bottom.top_right.u, uv.bottom.top_right.v, 0, -1, 0 },
+            { xf-1, yf-1, zf,   uv.bottom.bottom_right.u, uv.bottom.bottom_right.v, 0, -1, 0 },
+            { xf, yf-1, zf,     uv.bottom.bottom_left.u, uv.bottom.bottom_left.v, 0, -1, 0 },
+            { xf, yf-1, zf-1,   uv.bottom.top_left.u, uv.bottom.top_left.v, 0, -1, 0 },
         });
     }
 }

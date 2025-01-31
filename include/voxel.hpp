@@ -3,12 +3,13 @@
 
 #include <unordered_map>
 #include <iostream>
+#include <cstdint>
 
 // Voxel stuff
 
 // Represents the type of a voxel. VoxelType::NONE refers to an
 // empty voxel, or a null voxel.
-enum class VoxelType {
+enum class VoxelType : uint8_t {
     NONE,
     STONE,
     GRASS,
@@ -102,6 +103,7 @@ struct UVOffsetScheme {
 // voxel chunks.
 struct Voxel {
     VoxelType type;
+    static constexpr size_t sz = sizeof(VoxelType);
 };
 
 struct Position {
@@ -174,7 +176,7 @@ struct ChunkPosition {
 // Rectangular chunk for representing voxel formations
 struct Chunk {
     static constexpr int Width = 16;
-    static constexpr int Height = 128;
+    static constexpr int Height = 256;
 
     /**
      * @brief Populate this chunk to comprise entirely of the passed `type`.

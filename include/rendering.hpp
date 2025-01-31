@@ -6,6 +6,8 @@
 #include <glad/gl.h>
 
 namespace Rendering {
+    auto create_chunk_shader() -> GLuint;
+
     class ChunkShader {
     public:
         /**
@@ -23,7 +25,7 @@ namespace Rendering {
         void set_u_model(glm::mat4 model);
 
         auto program_id() const -> GLuint;
-    private:
+    
         ChunkShader() = default;
 
         GLuint m_program_id;
